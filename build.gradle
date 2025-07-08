@@ -1,0 +1,57 @@
+plugins {
+    id 'java'
+    id 'com.github.johnrengelman.shadow' version '8.1.1'
+}
+
+group = 'perch.chat'
+version = '1.0.0'
+archivesBaseName = 'PerchChat'
+
+sourceCompatibility = JavaVersion.VERSION_17
+targetCompatibility = JavaVersion.VERSION_17
+
+repositories {
+    mavenCentral()
+    maven { url = 'https://repo.papermc.io/repository/maven-public/' } // Paper/Spigot API
+    maven { url = 'https://repo.extendedclip.com/content/repositories/placeholderapi/' } // PlaceholderAPI
+    maven { url = 'https://nexus.scarsz.me/content/groups/public/' } // DiscordSRV
+    maven { url = 'https://repo.codemc.org/repository/maven-public/' } // misc
+    maven { url = 'https://m2.dv8tion.net/releases' } // JDA
+    maven { url = 'https://maven.enginehub.org/repo/' } // WorldEdit/WorldGuard
+}
+
+dependencies {
+    // Paper API (recommended over Spigot)
+    compileOnly 'io.papermc.paper:paper-api:1.20.4-R0.1-SNAPSHOT'
+
+    // PlaceholderAPI
+    compileOnly 'me.clip:placeholderapi:2.11.5'
+
+    // DiscordSRV API
+    compileOnly 'com.discordsrv:discordsrv:1.25.1'
+
+    // BungeeCord Chat API
+    compileOnly 'net.md-5:bungeecord-chat:1.17-R0.1-SNAPSHOT'
+
+    // mcMMO (local JAR, since it's not on Maven)
+    compileOnly files('libs/mcMMO.jar')
+
+    // JDA (if you use it directly)
+    compileOnly 'net.dv8tion:JDA:4.4.0_352'
+
+    // WorldGuard (if you use it directly)
+    compileOnly 'com.sk89q.worldguard:worldguard-bukkit:7.0.9'
+
+    // WorldEdit (if you use it directly)
+    compileOnly 'com.sk89q.worldedit:worldedit-bukkit:7.2.17'
+}
+
+tasks.withType(JavaCompile) {
+    options.encoding = 'UTF-8'
+}
+
+shadowJar {
+    archiveClassifier.set('')
+}
+
+build.dependsOn shadowJar

@@ -1,0 +1,13 @@
+name: PerchChat
+version: 1
+description: Chat Plugin made for The Perch
+author: Korbsti
+main: me.perch.chat.Main
+api-version: 1.17
+depend: [DiscordSRV]
+softdepend: [PlaceholderAPI]
+commands:
+   ch:
+   chreload:
+   chlist:
+   chspy:

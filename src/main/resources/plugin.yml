@@ -1,0 +1,13 @@
+name: PerchChat
+version: 1.0.0
+description: Perch's Chat System
+author: KayaLambrex
+main: me.perch.chat.Main
+api-version: 1.17
+depend: [DiscordSRV]
+softdepend: [PlaceholderAPI]
+commands:
+   ch:
+   chreload:
+   chlist:
+   chspy:
