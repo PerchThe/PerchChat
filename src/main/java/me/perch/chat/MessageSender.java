@@ -18,7 +18,15 @@ import github.scarsz.discordsrv.api.events.GameChatMessagePostProcessEvent;
 import github.scarsz.discordsrv.api.events.GameChatMessagePreProcessEvent;
 import github.scarsz.discordsrv.dependencies.jda.api.entities.GuildChannel;
 import github.scarsz.discordsrv.dependencies.jda.api.entities.TextChannel;
+
 import net.md_5.bungee.api.ChatColor;
+
+// Paper / Adventure imports
+import net.kyori.adventure.audience.MessageType;
+import net.kyori.adventure.identity.Identity;
+import net.kyori.adventure.chat.ChatType;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 
 public class MessageSender {
 
@@ -47,6 +55,14 @@ public class MessageSender {
 		partyWarningCounter.put(uuid, count);
 		return count % 50 == 1;
 	}
+
+
+	// NEW: sends as real chat, hidden when "Commands Only" is enabled
+	private void sendAsChat(Player recipient, Player sender, String legacySectionFormatted) {
+		final Component comp = LegacyComponentSerializer.legacySection().deserialize(legacySectionFormatted);
+		recipient.sendMessage(comp, ChatType.CHAT.bind(sender.name())); // binds the chat type to the sender
+	}
+
 
 	public String translateHexColorCodes(String message) {
 		final Pattern hexPattern = Pattern.compile("&" + "#" + "([A-Fa-f0-9]{6})");
@@ -323,12 +339,13 @@ public class MessageSender {
 			}
 
 			if (p.hasPermission(permission)) {
-				// --- FIX: Always send global messages to all with permission, regardless of channel ---
+				// --- GLOBAL branch: send as real CHAT (hidden by client "Commands Only")
 				if (isGlobal) {
 					String globalPrefix = plugin.getConfig().getString("channels.name." + channelName + ".prefix");
 					if (globalPrefix == null) globalPrefix = "";
-					p.sendMessage(ChatColor.translateAlternateColorCodes('&', format(globalPrefix, player, message,
-							true, fromCommand, channelName)));
+					String rendered = ChatColor.translateAlternateColorCodes('&',
+							format(globalPrefix, player, message, true, fromCommand, channelName));
+					sendAsChat(p, player, rendered);
 					continue;
 				}
 
@@ -373,16 +390,26 @@ public class MessageSender {
 									}
 									boolean sendRegardless = plugin.getConfig().getBoolean("channels.name." + channelName + ".sendRegardlessOfCurrentChannel");
 									if (sendRegardless) {
-										playerd.sendMessage(ChatColor.translateAlternateColorCodes('&', format(prefix,
-												player, message, isGlobal, fromCommand, channelName)));
+										String renderedNearby = ChatColor.translateAlternateColorCodes('&',
+												format(prefix, player, message, isGlobal, fromCommand, channelName));
+										if (isGlobal) {
+											sendAsChat(playerd, player, renderedNearby);
+										} else {
+											playerd.sendMessage(renderedNearby);
+										}
 										if (!playerd.equals(player)) localSomeoneReceived = true;
 									} else {
 										if (plugin.currentChannel.get(playerd.getName()) != null &&
 												plugin.currentChannel.get(playerd.getName()).equals(channelName)) {
-											playerd.sendMessage(ChatColor.translateAlternateColorCodes('&', format(
-													plugin.getConfig().getString("channels.name."
-															+ channelName + ".prefix"),
-													player, message, isGlobal, fromCommand, channelName)));
+											String renderedNearby = ChatColor.translateAlternateColorCodes('&',
+													format(plugin.getConfig().getString("channels.name."
+																	+ channelName + ".prefix"),
+															player, message, isGlobal, fromCommand, channelName));
+											if (isGlobal) {
+												sendAsChat(playerd, player, renderedNearby);
+											} else {
+												playerd.sendMessage(renderedNearby);
+											}
 											if (!playerd.equals(player)) localSomeoneReceived = true;
 										}
 									}
@@ -394,14 +421,22 @@ public class MessageSender {
 								if (prefix == null) prefix = "";
 							}
 							boolean sendRegardless = plugin.getConfig().getBoolean("channels.name." + channelName + ".sendRegardlessOfCurrentChannel");
+							String renderedSelf = ChatColor.translateAlternateColorCodes('&',
+									format(prefix, player, message, isGlobal, fromCommand, channelName));
 							if (sendRegardless) {
-								player.sendMessage(ChatColor.translateAlternateColorCodes('&', format(prefix, player,
-										message, isGlobal, fromCommand, channelName)));
+								if (isGlobal) {
+									sendAsChat(player, player, renderedSelf);
+								} else {
+									player.sendMessage(renderedSelf);
+								}
 							} else {
 								if (plugin.currentChannel.get(player.getName()) != null &&
 										plugin.currentChannel.get(player.getName()).equals(channelName)) {
-									player.sendMessage(ChatColor.translateAlternateColorCodes('&', format(plugin
-											.getConfig().getString("channels.name." + channelName + ".prefix"), player, message, isGlobal, fromCommand, channelName)));
+									if (isGlobal) {
+										sendAsChat(player, player, renderedSelf);
+									} else {
+										player.sendMessage(renderedSelf);
+									}
 								}
 							}
 							Bukkit.getLogger().info(ChatColor.translateAlternateColorCodes('&', format(plugin
