@@ -74,6 +74,10 @@ public class MessageSender {
 		return ChatColor.translateAlternateColorCodes('&', matcher.appendTail(buffer).toString());
 	}
 
+	/**
+	 * Build a Discord-safe string from config formats and PAPI,
+	 * strip MC color codes, and return it.
+	 */
 	public String formatToDiscord(String channelPrefix, Player p, String message, boolean isGlobal,
 								  boolean fromCommand, String channelName) {
 
@@ -91,38 +95,79 @@ public class MessageSender {
 			if (format == null) format = "{player}: {message}";
 			channelPrefix = "";
 		}
+
 		String playerName = p.getDisplayName();
 		if (playerName == null) playerName = "";
-		String msg = message;
-		if (msg == null) msg = "";
+		String msg = (message == null) ? "" : message;
 
-		String format1 = format.replace("{channel-prefix}", channelPrefix);
-		String format2 = format1.replace("{player}", playerName);
-		String format3 = format2.replace("{message}", msg);
-
-		// Keep your convenience alias for Discord message text only
-		format3 = format3.replace("[i]", "[item]");
+		String formatted = format
+				.replace("{channel-prefix}", channelPrefix)
+				.replace("{player}", playerName)
+				.replace("{message}", msg)
+				.replace("[i]", "[item]"); // convenience alias only for Discord text
 
 		for (String str : plugin.emojis) {
 			String check = plugin.chatEmojiData.getString("emojis." + str + ".check");
 			String replacement = plugin.chatEmojiData.getString("emojis." + str + ".replacement");
-			if (check != null && replacement != null) {
-				if (format3.contains(check)) {
-					format3 = format3.replace(check, replacement);
-				}
+			if (check != null && replacement != null && formatted.contains(check)) {
+				formatted = formatted.replace(check, replacement);
 			}
 		}
 
 		if (plugin.hasPlaceholder) {
-			format3 = PlaceholderAPI.setPlaceholders(p.getPlayer(), format3);
+			formatted = PlaceholderAPI.setPlaceholders(p.getPlayer(), formatted);
 		}
 
-		// Discord should not receive Minecraft color codes
-		format3 = format3
+		// Discord must not get MC color codes
+		formatted = formatted
 				.replaceAll("&#[A-Fa-f0-9]{6}", "")
 				.replaceAll("§[0-9A-FK-ORa-fk-orx]", "");
 
-		return format3;
+		return formatted;
+	}
+
+	/**
+	 * NEW: Send to Discord once, for any channel (global or named),
+	 * using the correct config format and channel ID.
+	 */
+	private void mirrorToDiscord(Player p, String channelName, boolean isGlobal, boolean fromCommand, String rawMsg) {
+		try {
+			String channelId;
+			String channelPrefix = null;
+
+			if (isGlobal) {
+				channelId = plugin.getConfig().getString("channels.name.globalChannelID");
+				channelPrefix = ""; // global uses its own format without prefix
+			} else {
+				channelId = plugin.getConfig().getString("channels.name." + channelName + ".channelID");
+				channelPrefix = plugin.getConfig().getString("channels.name." + channelName + ".prefix");
+			}
+
+			if (channelId == null || channelId.trim().isEmpty()) return;
+			if (plugin.api == null || plugin.api.getMainGuild() == null) return;
+
+			GuildChannel ch = plugin.api.getMainGuild().getGuildChannelById(channelId);
+			TextChannel txt = (ch instanceof TextChannel) ? (TextChannel) ch : null;
+			if (txt == null) {
+				Bukkit.getLogger().warning("[SoaromaCH] Discord channel ID " + channelId + " is not a valid text channel or does not exist!");
+				return;
+			}
+
+			String sendDiscordMessage = formatToDiscord(channelPrefix, p, rawMsg, isGlobal, fromCommand, channelName);
+
+			GameChatMessagePreProcessEvent preEvent = plugin.api.api.callEvent(
+					new GameChatMessagePreProcessEvent(channelId, sendDiscordMessage, p)
+			);
+			plugin.api.api.callEvent(
+					new GameChatMessagePostProcessEvent(channelId, sendDiscordMessage, p, preEvent.isCancelled())
+			);
+
+			if (!preEvent.isCancelled()) {
+				txt.sendMessage(preEvent.getMessage()).queue();
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
 	}
 
 	@SuppressWarnings("deprecation")
@@ -239,7 +284,7 @@ public class MessageSender {
 		format3 = format3.replace("[i]", "[item]");
 
 		if (plugin.hasPlaceholder) {
-			format3 = PlaceholderAPI.setPlaceholders(p.getPlayer(), format3);
+			format3 = (PlaceholderAPI.setPlaceholders(p.getPlayer(), format3));
 		}
 		return translateHexColorCodes(format3);
 	}
@@ -253,42 +298,13 @@ public class MessageSender {
 			return;
 		}
 
+		// --- NEW: Mirror to Discord ONCE for this message (all channels) ---
+		mirrorToDiscord(player, channelName, isGlobal, fromCommand, message);
+
 		// ---- GLOBAL via command: route to normal chat with RAW message so InteractiveChat can parse tokens ----
 		if (isGlobal && fromCommand) {
-			String globalPrefix = plugin.getConfig().getString("channels.name." + channelName + ".prefix");
-			if (globalPrefix == null) globalPrefix = "";
-
-			// Mirror to Discord ONCE using your existing formatter (colors stripped inside)
-			try {
-				if (plugin.previousMessage.get(player.getName()) == 0) {
-					String globalChannelID = plugin.getConfig().getString("channels.name.globalChannelID");
-					if (globalChannelID != null && !globalChannelID.equals(" ")) {
-						GuildChannel channel = plugin.api.getMainGuild().getGuildChannelById(globalChannelID);
-						TextChannel txtChannel = (channel instanceof TextChannel) ? (TextChannel) channel : null;
-
-						if (txtChannel != null) {
-							String sendDiscordMessage = formatToDiscord(globalPrefix, player, message, true, fromCommand, channelName);
-							GameChatMessagePreProcessEvent preEvent = plugin.api.api.callEvent(
-									new GameChatMessagePreProcessEvent(globalChannelID, sendDiscordMessage, player)
-							);
-							plugin.api.api.callEvent(
-									new GameChatMessagePostProcessEvent(globalChannelID, sendDiscordMessage, player, preEvent.isCancelled())
-							);
-							txtChannel.sendMessage(preEvent.getMessage()).queue();
-						} else {
-							Bukkit.getLogger().warning("[SoaromaCH] Global Discord channel ID " + globalChannelID + " is not a valid text channel or does not exist!");
-						}
-					}
-				}
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
-
-			// Send RAW message to the chat pipeline so Essentials + InteractiveChat can process it
-			final String raw = (message == null ? "" : message).replace("\u00A7", "");
+			final String raw = (message == null ? "" : message).replace("\u00A7", ""); // strip illegal §
 			Bukkit.getScheduler().runTask(plugin, () -> player.chat(raw));
-
-			plugin.previousMessage.put(player.getName(), 0);
 			return;
 		}
 
@@ -419,12 +435,10 @@ public class MessageSender {
 							}
 						}
 					});
-					plugin.previousMessage.put(player.getName(), 0);
 					return;
 				}
 			}
 		}
-		plugin.previousMessage.put(player.getName(), 0);
 		Bukkit.getLogger().info(ChatColor.translateAlternateColorCodes('&', format(prefixChannel, player, message,
 				isGlobal, false, channelName)));
 	}
