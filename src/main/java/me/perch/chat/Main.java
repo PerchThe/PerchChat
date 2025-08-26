@@ -12,7 +12,9 @@ import java.util.Set;
 import org.bukkit.Bukkit;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.server.PluginEnableEvent;
 import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -29,7 +31,6 @@ public class Main extends JavaPlugin implements Listener {
 	public MessageSender chatChannel = new MessageSender(this);
 	public Commands commands = new Commands(this);
 	public Configuration config = new Configuration();
-	public Set<String> allKeys;
 	public ArrayList<String> channels;
 	public boolean hasPlaceholder = false;
 	public boolean enableGlobalChat = false;
@@ -46,9 +47,12 @@ public class Main extends JavaPlugin implements Listener {
 	public DiscordSRV api = DiscordSRV.getPlugin();
 	public Main main = this;
 
+	// Keep a reference to the registered PAPI expansion so we can re-register safely
+	private PAPI papiExpansion;
+
 	@Override
 	public void onEnable() {
-		// Load emoji data
+		// Load emoji data (safe if file exists; otherwise empty config)
 		chatEmojisFile = new File(directoryPathFile);
 		chatEmojiData = YamlConfiguration.loadConfiguration(chatEmojisFile);
 		Set<String> keys = chatEmojiData.getKeys(true);
@@ -62,32 +66,44 @@ public class Main extends JavaPlugin implements Listener {
 			}
 		}
 
-		// Subscribe to DiscordSRV events after a short delay
+		// Subscribe to DiscordSRV events after a short delay (lets DiscordSRV initialize)
 		Bukkit.getScheduler().runTaskLater(this, () -> {
-			DiscordSRV.api.subscribe(new ChannelListener(main));
-		}, 30);
+			try {
+				DiscordSRV.api.subscribe(new ChannelListener(main));
+			} catch (Throwable t) {
+				getLogger().warning("Failed to subscribe to DiscordSRV API: " + t.getMessage());
+			}
+		}, 30L);
 
 		// Register events and commands
 		PluginManager pm = Bukkit.getPluginManager();
 		pm.registerEvents(new ChatChannel(this), this);
 		pm.registerEvents(new Join(this), this);
+		pm.registerEvents(this, this); // for PluginEnableEvent listener below
 		config.setConfig(this);
 
-		getCommand("ch").setExecutor(new Commands(this));
-		getCommand("chreload").setExecutor(new Commands(this));
-		getCommand("chlist").setExecutor(new Commands(this));
-		getCommand("chspy").setExecutor(new Commands(this));
+		if (getCommand("ch") != null) getCommand("ch").setExecutor(new Commands(this));
+		if (getCommand("chreload") != null) getCommand("chreload").setExecutor(new Commands(this));
+		if (getCommand("chlist") != null) getCommand("chlist").setExecutor(new Commands(this));
+		if (getCommand("chspy") != null) getCommand("chspy").setExecutor(new Commands(this));
 
 		// Load channels from config
-		Set<String> allKeys = getConfig().getKeys(true);
+		Set<String> configKeys = getConfig().getKeys(true);
 		channels = new ArrayList<>();
-		for (String key : allKeys) {
-			if (!key.endsWith("defaultGlobal") && !key.endsWith("defaultGlobalPermission")
-					&& key.startsWith("channels.name.") && !key.endsWith(".permission") && !key.endsWith(".prefix")
-					&& !key.endsWith(".sendRegardlessOfCurrentChannel") && !key.endsWith(".distanceMessage")
-					&& !key.endsWith(".enableDistanceMessage") && !key.endsWith(".messageFormat")
-					&& !key.endsWith(".chlistDisplayAll") && !key.endsWith(".channelExists")
-					&& !key.endsWith(".defaultGlobalMessageFormat") && !key.endsWith(".enableGlobalMessageFormat")
+		for (String key : configKeys) {
+			if (!key.endsWith("defaultGlobal")
+					&& !key.endsWith("defaultGlobalPermission")
+					&& key.startsWith("channels.name.")
+					&& !key.endsWith(".permission")
+					&& !key.endsWith(".prefix")
+					&& !key.endsWith(".sendRegardlessOfCurrentChannel")
+					&& !key.endsWith(".distanceMessage")
+					&& !key.endsWith(".enableDistanceMessage")
+					&& !key.endsWith(".messageFormat")
+					&& !key.endsWith(".chlistDisplayAll")
+					&& !key.endsWith(".channelExists")
+					&& !key.endsWith(".defaultGlobalMessageFormat")
+					&& !key.endsWith(".enableGlobalMessageFormat")
 					&& !key.endsWith(".channelUponJoining")
 					&& !key.endsWith(".spyPermission")
 					&& !key.endsWith(".globalChannelID")
@@ -97,37 +113,31 @@ public class Main extends JavaPlugin implements Listener {
 				channels.add(key.replace("channels.name.", ""));
 			}
 		}
-		enableGlobalChat = getConfig().getBoolean("channels.name.enableGlobalMessageFormat");
-		channels.add(getConfig().getString("channels.name.defaultGlobal"));
-		enableArgsAsMessage = getConfig().getBoolean("channels.name.enableArgsAsMessage");
-
-		if (Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
-			hasPlaceholder = true;
+		enableGlobalChat = getConfig().getBoolean("channels.name.enableGlobalMessageFormat", false);
+		String defaultGlobal = getConfig().getString("channels.name.defaultGlobal");
+		if (defaultGlobal != null && !defaultGlobal.isEmpty()) {
+			channels.add(defaultGlobal);
 		}
+		enableArgsAsMessage = getConfig().getBoolean("channels.name.enableArgsAsMessage", false);
+
+		hasPlaceholder = Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI");
 
 		// Remove non-existent channels
-		int dd = channels.size() - 1;
-		int holder = 0;
-		while (dd != holder) {
-			for (int x = 0; x != channels.size(); x++) {
-				String channel = channels.get(x);
-				if (!getConfig().getBoolean("channels.name." + channel + ".channelExists")
-						&& !channel.equals(getConfig().getString("channels.name.defaultGlobal"))) {
-					for (int x1 = 0; x1 != channels.size(); x1++) {
-						if (channels.get(x).equals(channel)) {
-							channels.remove(x);
-							x1 = 0;
-							x = 0;
-						}
-					}
-				}
+		// This logic ensures we only keep channels with channelExists=true (except defaultGlobal).
+		for (int i = 0; i < channels.size(); i++) {
+			String ch = channels.get(i);
+			boolean exists = getConfig().getBoolean("channels.name." + ch + ".channelExists", false);
+			if (!exists && (defaultGlobal == null || !ch.equals(defaultGlobal))) {
+				channels.remove(i);
+				i--; // adjust index after removal
 			}
-			holder++;
 		}
 
 		// Set default channel and spyChannels for online players
 		for (Player p : Bukkit.getOnlinePlayers()) {
-			currentChannel.put(p.getName(), getConfig().getString("channels.name.defaultGlobal"));
+			if (defaultGlobal != null) {
+				currentChannel.put(p.getName(), defaultGlobal);
+			}
 			spyChannels.put(p.getName(), new ArrayList<>());
 		}
 
@@ -135,6 +145,9 @@ public class Main extends JavaPlugin implements Listener {
 		dataFile = new File(this.getDataFolder(), "data.yml");
 		if (!dataFile.exists()) {
 			try {
+				if (!this.getDataFolder().exists()) {
+					this.getDataFolder().mkdirs();
+				}
 				dataFile.createNewFile();
 			} catch (IOException e) {
 				e.printStackTrace();
@@ -142,15 +155,69 @@ public class Main extends JavaPlugin implements Listener {
 		}
 		dataYaml = YamlConfiguration.loadConfiguration(dataFile);
 
-		// Register PlaceholderAPI expansion if available
-		if (Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
-			new PAPI().register();
-		}
+		// Robust PlaceholderAPI registration:
+		// 1) immediate attempt
+		tryRegisterPapi();
+		// 2) delayed retry for PlugMan load order shenanigans
+		Bukkit.getScheduler().runTaskLater(this, this::tryRegisterPapi, 20L);
 	}
 
 	@Override
 	public void onDisable() {
+		// Unregister PAPI expansion to avoid duplicates on PlugMan reloads
+		tryUnregisterPapi();
+
+		// Persist config
 		reloadConfig();
 		saveConfig();
+	}
+
+	// Listen for PlaceholderAPI getting enabled after us (PlugMan or normal late load)
+	@EventHandler
+	public void onPluginEnable(PluginEnableEvent event) {
+		if (event.getPlugin() != null && "PlaceholderAPI".equalsIgnoreCase(event.getPlugin().getName())) {
+			// Slight delay to ensure PAPI finished boot sequence
+			Bukkit.getScheduler().runTaskLater(this, this::tryRegisterPapi, 1L);
+		}
+	}
+
+	private void tryRegisterPapi() {
+		try {
+			if (Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
+				// Ensure PlaceholderAPI classes are available and expansion can be registered
+				if (papiExpansion != null) {
+					try {
+						papiExpansion.unregister();
+					} catch (Throwable ignored) {}
+					papiExpansion = null;
+				}
+				papiExpansion = new PAPI();
+				boolean ok = papiExpansion.register();
+				if (ok) {
+					getLogger().info("PlaceholderAPI expansion registered.");
+					hasPlaceholder = true;
+				} else {
+					getLogger().warning("Failed to register PlaceholderAPI expansion.");
+				}
+			} else {
+				getLogger().info("PlaceholderAPI not detected; skipping expansion registration.");
+				hasPlaceholder = false;
+			}
+		} catch (NoClassDefFoundError | Exception e) {
+			getLogger().warning("Could not register PlaceholderAPI expansion: " + e.getMessage());
+		}
+	}
+
+	private void tryUnregisterPapi() {
+		if (papiExpansion != null) {
+			try {
+				papiExpansion.unregister();
+				getLogger().info("PlaceholderAPI expansion unregistered.");
+			} catch (Throwable t) {
+				// Best-effort cleanup
+			} finally {
+				papiExpansion = null;
+			}
+		}
 	}
 }
