@@ -5,7 +5,7 @@ author: KayaLambrex
 main: me.perch.chat.Main
 api-version: 1.17
 depend: [DiscordSRV]
-softdepend: [PlaceholderAPI]
+softdepend: [PlaceholderAPI, GriefPrevention]
 commands:
    ch:
    chreload:

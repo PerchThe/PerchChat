@@ -1,19 +1,18 @@
 package me.perch.chat;
 
 import me.clip.placeholderapi.PlaceholderAPI;
-
+import me.ryanhamshire.GriefPrevention.GriefPrevention;
+import me.ryanhamshire.GriefPrevention.DataStore;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
-
+import java.util.Collection;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
-
 import com.gmail.nossr50.api.PartyAPI;
-
 import github.scarsz.discordsrv.api.events.GameChatMessagePostProcessEvent;
 import github.scarsz.discordsrv.api.events.GameChatMessagePreProcessEvent;
 import github.scarsz.discordsrv.dependencies.jda.api.entities.GuildChannel;
@@ -74,7 +73,6 @@ public class MessageSender {
 				.getString("channels.name." + channelName + ".toDiscordFormat");
 		if (format == null) format = "";
 		if (isGlobal) {
-			// Use toGlobalChannelDiscord for global messages to Discord
 			format = plugin.getConfig()
 					.getString("channels.name.toGlobalChannelDiscord");
 			if (format == null) format = "{player}: {message}";
@@ -145,7 +143,6 @@ public class MessageSender {
 
 		try {
 			for (Player member : PartyAPI.getOnlineMembers(p)) {
-				// Send to ALL party members, including the sender
 				member.sendMessage(finalMessage);
 				if (!member.equals(p)) someoneReceived = true;
 			}
@@ -223,19 +220,15 @@ public class MessageSender {
 			format3 = (PlaceholderAPI.setPlaceholders(p.getPlayer(), format3));
 		}
 		try {
-			// --- Local/Other Channels ---
 			if (!isGlobal) {
-				if (plugin.previousMessage.get(p.getName()) == 0) {
+				if (plugin.previousMessage.getOrDefault(p.getName(), 0) == 0) {
 					String channelID = plugin.getConfig().getString("channels.name." + channelName + ".channelID");
 					if (channelID != null && !channelID.equals(" ")) {
 						GuildChannel channel = plugin.api.getMainGuild().getGuildChannelById(channelID);
 						TextChannel txtChannel = (channel instanceof TextChannel) ? (TextChannel) channel : null;
 
 						if (txtChannel != null) {
-							// Use formatToDiscord for Discord messages!
 							String sendDiscordMessage = formatToDiscord(channelPrefix, p, msg, isGlobal, fromCommand, channelName);
-
-							// Optionally strip Minecraft color codes for Discord
 							sendDiscordMessage = sendDiscordMessage
 									.replaceAll("&#[A-Fa-f0-9]{6}", "")
 									.replaceAll("§[0-9A-FK-ORa-fk-orx]", "");
@@ -256,19 +249,15 @@ public class MessageSender {
 				}
 			}
 
-			// --- Global Channel: Always send to Discord if isGlobal is true ---
 			if (isGlobal) {
-				if (plugin.previousMessage.get(p.getName()) == 0) {
+				if (plugin.previousMessage.getOrDefault(p.getName(), 0) == 0) {
 					String globalChannelID = plugin.getConfig().getString("channels.name.globalChannelID");
 					if (globalChannelID != null && !globalChannelID.equals(" ")) {
 						GuildChannel channel = plugin.api.getMainGuild().getGuildChannelById(globalChannelID);
 						TextChannel txtChannel = (channel instanceof TextChannel) ? (TextChannel) channel : null;
 
 						if (txtChannel != null) {
-							// Use formatToDiscord for Discord messages!
 							String sendDiscordMessage = formatToDiscord(channelPrefix, p, msg, true, fromCommand, channelName);
-
-							// Optionally strip Minecraft color codes for Discord
 							sendDiscordMessage = sendDiscordMessage
 									.replaceAll("&#[A-Fa-f0-9]{6}", "")
 									.replaceAll("§[0-9A-FK-ORa-fk-orx]", "");
@@ -298,9 +287,32 @@ public class MessageSender {
 	public void messageChannelSender(Player player, String message, String permission, boolean isGlobal,
 									 boolean fromCommand, boolean overrideToggle, String channelName) {
 
-		// --- Fix: Only handle party chat via formatParty ---
 		if ("Party".equalsIgnoreCase(channelName) || (!overrideToggle && plugin.toggledParty.get(player.getName()) != null && plugin.toggledParty.get(player.getName()))) {
 			formatParty(player, message);
+			return;
+		}
+
+		if (isGlobal) {
+			String globalPrefix = plugin.getConfig().getString("channels.name." + channelName + ".prefix");
+			if (globalPrefix == null) globalPrefix = "";
+			String formattedMsg = ChatColor.translateAlternateColorCodes('&', format(globalPrefix, player, message, true, fromCommand, channelName));
+			UUID senderUUID = player.getUniqueId();
+			Collection<? extends Player> online = Bukkit.getOnlinePlayers();
+			DataStore gpData = GriefPrevention.instance.dataStore;
+
+			Thread.startVirtualThread(() -> {
+				for (Player p : online) {
+					if (p.hasPermission(permission)) {
+						if (gpData.getPlayerData(p.getUniqueId()).ignoredPlayers.containsKey(senderUUID)) {
+							continue;
+						}
+						p.sendMessage(formattedMsg);
+					}
+				}
+			});
+
+			plugin.previousMessage.put(player.getName(), 0);
+			Bukkit.getLogger().info(formattedMsg);
 			return;
 		}
 
@@ -323,15 +335,6 @@ public class MessageSender {
 			}
 
 			if (p.hasPermission(permission)) {
-				// --- FIX: Always send global messages to all with permission, regardless of channel ---
-				if (isGlobal) {
-					String globalPrefix = plugin.getConfig().getString("channels.name." + channelName + ".prefix");
-					if (globalPrefix == null) globalPrefix = "";
-					p.sendMessage(ChatColor.translateAlternateColorCodes('&', format(globalPrefix, player, message,
-							true, fromCommand, channelName)));
-					continue;
-				}
-
 				boolean enableDistance = plugin.getConfig().getBoolean("channels.name." + channelName + ".enableDistanceMessage");
 				if (!enableDistance) {
 					String channelPerm = plugin.getConfig().getString("channels.name." + channelName + ".permission");
