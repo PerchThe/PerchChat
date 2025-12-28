@@ -1,42 +1,56 @@
 package me.perch.chat.discordsrv;
 
+import github.scarsz.discordsrv.api.Subscribe;
+import github.scarsz.discordsrv.api.events.DiscordGuildMessagePostProcessEvent;
+import me.perch.chat.Main;
+import net.md_5.bungee.api.ChatColor;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
-import github.scarsz.discordsrv.api.Subscribe;
-import github.scarsz.discordsrv.api.events.DiscordGuildMessageReceivedEvent;
-import me.perch.chat.Main;
-import net.md_5.bungee.api.ChatColor;
-
 public class ChannelListener {
-	
-	Main plugin;
-	
+
+	private final Main plugin;
+
 	public ChannelListener(Main instance) {
 		this.plugin = instance;
 	}
-	
+
 	@Subscribe
-	public void discordMessageReceived(DiscordGuildMessageReceivedEvent event) {
-		// Example of logging a message sent in Discord
-		if (event.getChannel().getId().equals(plugin.getConfig().getString("channels.name.globalChannelID")) || event.getAuthor().isBot() ||  event.getMessage().toString().split(":")[2].equalsIgnoreCase("pl")) {
-			return;
-		}
-		outloop:
-		for (String str : plugin.channels) {
-			if (!str.equals(plugin.getConfig().getString("channels.name.defaultGlobal"))) {
-				if (event.getChannel().getId().toString().equals(plugin.getConfig().getString("channels.name." + str + ".channelID"))) {
-					String message;
-					message = ChatColor.translateAlternateColorCodes('&', plugin.getConfig().getString("channels.name."+ str + ".fromDiscordFormat")).replace("{user}", event.getMember().getEffectiveName()).replace("{message}", "" + event.getMessage().getContentDisplay());
-					for(Player p : Bukkit.getOnlinePlayers()) {
-						if(p.hasPermission(plugin.getConfig().getString("channels.name." + str + ".permission")))
-							p.sendMessage(message);
-					}
-					break outloop;
+	public void onDiscordToMinecraftPostProcess(DiscordGuildMessagePostProcessEvent event) {
+		if (event.getAuthor() != null && event.getAuthor().isBot()) return;
+
+		String channelId = event.getChannel() != null ? event.getChannel().getId() : null;
+		if (channelId == null) return;
+
+		String globalId = plugin.getConfig().getString("channels.name.globalChannelID");
+		if (globalId != null && globalId.equals(channelId)) return;
+
+		for (String ch : plugin.channels) {
+			String defaultGlobal = plugin.getConfig().getString("channels.name.defaultGlobal");
+			if (defaultGlobal != null && ch.equalsIgnoreCase(defaultGlobal)) continue;
+
+			String cfgId = plugin.getConfig().getString("channels.name." + ch + ".channelID");
+			if (cfgId == null || cfgId.isBlank()) continue;
+
+			if (!cfgId.equals(channelId)) continue;
+
+			event.setCancelled(true);
+
+			String fmt = plugin.getConfig().getString("channels.name." + ch + ".fromDiscordFormat", "{user}: {message}");
+			String user = event.getMember() != null ? event.getMember().getEffectiveName() : "Discord";
+			String msg = event.getMessage() != null ? event.getMessage().getContentDisplay() : "";
+
+			String built = ChatColor.translateAlternateColorCodes('&',
+					fmt.replace("{user}", user).replace("{message}", msg)
+			);
+
+			String perm = plugin.getConfig().getString("channels.name." + ch + ".permission");
+			for (Player p : Bukkit.getOnlinePlayers()) {
+				if (perm == null || perm.isBlank() || p.hasPermission(perm)) {
+					p.sendMessage(built);
 				}
 			}
+			return;
 		}
-		
 	}
-	
 }
