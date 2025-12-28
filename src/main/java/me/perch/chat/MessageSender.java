@@ -3,8 +3,6 @@ package me.perch.chat;
 import me.clip.placeholderapi.PlaceholderAPI;
 import me.ryanhamshire.GriefPrevention.GriefPrevention;
 import me.ryanhamshire.GriefPrevention.DataStore;
-import github.scarsz.discordsrv.dependencies.jda.api.entities.GuildChannel;
-import github.scarsz.discordsrv.dependencies.jda.api.entities.TextChannel;
 import net.md_5.bungee.api.ChatColor;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Entity;
@@ -26,7 +24,6 @@ public class MessageSender {
 	}
 
 	private static final char COLOR_CHAR = '\u00A7';
-
 	private static final Map<UUID, Integer> localWarningCounter = new HashMap<>();
 	private static final Map<UUID, Integer> partyWarningCounter = new HashMap<>();
 
@@ -58,74 +55,12 @@ public class MessageSender {
 		return ChatColor.translateAlternateColorCodes('&', matcher.appendTail(buffer).toString());
 	}
 
-	private String stripForDiscord(String s) {
-		if (s == null) return "";
-		return s.replaceAll("&#[A-Fa-f0-9]{6}", "")
-				.replaceAll("§[0-9A-FK-ORa-fk-orx]", "");
-	}
-
 	private void sendToDiscordOnce(Player p, String channelName, boolean isGlobal, boolean fromCommand, String message) {
-		try {
-			String channelId;
-			String channelPrefix = "";
+		if (!org.bukkit.Bukkit.getPluginManager().isPluginEnabled("DiscordSRV")) return;
 
-			if (isGlobal) {
-				channelId = plugin.getConfig().getString("channels.name.globalChannelID");
-			} else {
-				channelId = plugin.getConfig().getString("channels.name." + channelName + ".channelID");
-				channelPrefix = plugin.getConfig().getString("channels.name." + channelName + ".prefix", "");
-			}
+		String targetChannel = isGlobal ? "global" : channelName.toLowerCase();
 
-			if (channelId == null || channelId.trim().isEmpty()) return;
-
-			GuildChannel channel = plugin.api.getMainGuild().getGuildChannelById(channelId);
-			if (!(channel instanceof TextChannel)) return;
-
-			TextChannel txt = (TextChannel) channel;
-
-			String payload = formatToDiscord(channelPrefix, p, message, isGlobal, fromCommand, channelName);
-			payload = stripForDiscord(payload);
-
-			txt.sendMessage(payload).queue();
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-	}
-
-	public String formatToDiscord(String channelPrefix, Player p, String message, boolean isGlobal, boolean fromCommand, String channelName) {
-
-		if (channelPrefix == null) channelPrefix = "";
-
-		String format = plugin.getConfig().getString("channels.name." + channelName + ".toDiscordFormat", "");
-		if (isGlobal) {
-			format = plugin.getConfig().getString("channels.name.toGlobalChannelDiscord", "{player}: {message}");
-			channelPrefix = "";
-		}
-
-		String playerName = p.getDisplayName();
-		if (playerName == null) playerName = "";
-
-		String msg = message;
-		if (msg == null) msg = "";
-
-		String out = format.replace("{channel-prefix}", channelPrefix)
-				.replace("{player}", playerName)
-				.replace("{message}", msg)
-				.replace("[i]", "[item]");
-
-		for (String str : plugin.emojis) {
-			String check = plugin.chatEmojiData.getString("emojis." + str + ".check");
-			String replacement = plugin.chatEmojiData.getString("emojis." + str + ".replacement");
-			if (check != null && replacement != null && out.contains(check)) {
-				out = out.replace(check, replacement);
-			}
-		}
-
-		if (plugin.hasPlaceholder) {
-			out = PlaceholderAPI.setPlaceholders(p, out);
-		}
-
-		return translateHexColorCodes(out);
+		github.scarsz.discordsrv.DiscordSRV.getPlugin().processChatMessage(p, message, targetChannel, false);
 	}
 
 	public String format(String channelPrefix, Player p, String message, boolean isGlobal, boolean fromCommand, String channelName) {
@@ -208,13 +143,8 @@ public class MessageSender {
 
 			String partyID = plugin.getConfig().getString("partyID");
 			if (partyID != null && !partyID.isEmpty()) {
-				GuildChannel channel = plugin.api.getMainGuild().getGuildChannelById(partyID);
-				if (channel instanceof TextChannel) {
-					String discordFormat = plugin.getConfig().getString("partyDiscordFormat", "({party-name}) {player}: {message}");
-					String payload = discordFormat.replace("{party-name}", partyName)
-							.replace("{player}", playerName)
-							.replace("{message}", msg);
-					((TextChannel) channel).sendMessage(stripForDiscord(payload)).queue();
+				if (org.bukkit.Bukkit.getPluginManager().isPluginEnabled("DiscordSRV")) {
+					github.scarsz.discordsrv.DiscordSRV.getPlugin().processChatMessage(p, message, "party", false);
 				}
 			}
 		} catch (Exception e) {
