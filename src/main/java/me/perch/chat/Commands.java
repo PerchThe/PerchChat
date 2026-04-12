@@ -60,16 +60,15 @@ public class Commands implements CommandExecutor {
 				player.sendMessage(msg("notInParty"));
 				return true;
 			}
+
 			if (hasMessage) {
 				String message = buildMessage(args, 1);
-				// FIX: Just call formatParty, do not try to use a return value or send again
 				plugin.chatChannel.formatParty(player, message);
 			} else {
-				boolean isToggled = plugin.toggledParty.getOrDefault(player.getName(), false);
-				plugin.toggledParty.put(player.getName(), !isToggled);
-				savePlayerData(player, "party", !isToggled);
-				String messageKey = !isToggled ? "partyTrue" : "partyFalse";
-				player.sendMessage(msg(messageKey));
+
+				plugin.currentChannel.put(player.getName(), "party");
+				savePlayerData(player, "party", true);
+				player.sendMessage(msg("partyTrue"));
 			}
 			return true;
 		}
@@ -93,14 +92,13 @@ public class Commands implements CommandExecutor {
 			String message = buildMessage(args, 1);
 			String previousChannel = plugin.currentChannel.get(player.getName());
 			plugin.currentChannel.put(player.getName(), matchedChannel);
-			// Pass matchedChannel as parameter!
 			plugin.chatChannel.messageChannelSender(player, message, permission, isGlobal, true, true, matchedChannel);
 			Bukkit.getScheduler().runTaskLaterAsynchronously(plugin, () -> {
 				plugin.currentChannel.put(player.getName(), previousChannel);
 			}, 2);
 		} else {
+
 			plugin.currentChannel.put(player.getName(), matchedChannel);
-			plugin.toggledParty.put(player.getName(), false);
 			savePlayerData(player, matchedChannel, false);
 			player.sendMessage(msg("switchedChannel").replace("{channel-name}", matchedChannel));
 		}

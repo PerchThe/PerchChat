@@ -16,25 +16,24 @@ public class ChatChannel implements Listener {
 	@EventHandler(ignoreCancelled = true)
 	public void chatEvent(AsyncPlayerChatEvent e) {
 		String playerName = e.getPlayer().getName();
+
 		if (plugin.currentChannel.get(playerName) == null) {
 			plugin.currentChannel.put(playerName, plugin.getConfig().getString("channels.name.defaultGlobal"));
 		}
 
-		// If in party chat, handle that first and exit.
-		if (plugin.toggledParty.get(playerName) != null && plugin.toggledParty.get(playerName)) {
+		String currentChannel = plugin.currentChannel.get(playerName);
+		String msg = e.getMessage();
+		final String finalMsg = msg;
+		Player p = e.getPlayer();
+
+		if (currentChannel.equalsIgnoreCase("party")) {
 			Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-				Player p = e.getPlayer();
-				// Only call formatParty, do NOT send its return value!
-				plugin.chatChannel.formatParty(p, e.getMessage());
+				plugin.chatChannel.formatParty(p, finalMsg);
 			});
 			e.setCancelled(true);
 			return;
 		}
 
-		// Determine the current channel for this player
-		String currentChannel = plugin.currentChannel.get(playerName);
-
-		// Check if the player is in the default global channel
 		boolean isGlobalChannel = currentChannel.equals(plugin.getConfig().getString("channels.name.defaultGlobal"));
 
 		if (isGlobalChannel) {
@@ -42,31 +41,34 @@ public class ChatChannel implements Listener {
 				Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
 					String perm = plugin.getConfig().getString("channels.name.defaultGlobalPermission", "chatchannels.chat.global");
 					plugin.chatChannel.messageChannelSender(
-							e.getPlayer(),
-							e.getMessage(),
+							p,
+							finalMsg,
 							perm,
-							true,   // isGlobal
-							false,  // fromCommand
-							false,  // overrideToggle
-							currentChannel // pass the channel name!
+							true,
+							false,
+							false,
+							currentChannel
 					);
 				});
 				e.setCancelled(true);
 			}
-		} else {
+		}
+		else {
 			Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
 				String perm = plugin.getConfig().getString("channels.name." + currentChannel + ".permission");
+
 				if (perm == null) {
 					return;
 				}
+
 				plugin.chatChannel.messageChannelSender(
-						e.getPlayer(),
-						e.getMessage(),
+						p,
+						finalMsg,
 						perm,
-						false,  // isGlobal
-						false,  // fromCommand
-						false,  // overrideToggle
-						currentChannel // pass the channel name!
+						false,
+						false,
+						false,
+						currentChannel
 				);
 			});
 			e.setCancelled(true);

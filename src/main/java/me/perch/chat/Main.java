@@ -1,13 +1,11 @@
 package me.perch.chat;
 
-import me.clip.placeholderapi.PlaceholderAPI;
 import me.perch.chat.discordsrv.ChannelListener;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Set;
 
 import org.bukkit.Bukkit;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -26,7 +24,6 @@ public class Main extends JavaPlugin implements Listener {
 	public HashMap<String, Integer> discordChannelDelay = new HashMap<>();
 	public ArrayList<String> emojis = new ArrayList<>();
 	public HashMap<String, Integer> previousMessage = new HashMap<>();
-	public HashMap<String, Boolean> toggledParty = new HashMap<>();
 	public HashMap<String, ArrayList<String>> spyChannels = new HashMap<>();
 	public MessageSender chatChannel = new MessageSender(this);
 	public Commands commands = new Commands(this);
@@ -36,10 +33,7 @@ public class Main extends JavaPlugin implements Listener {
 	public boolean enableGlobalChat = false;
 	public boolean enableArgsAsMessage = false;
 
-	String dir = System.getProperty("user.dir");
-	String directoryPathFile = dir + File.separator + "plugins" + File.separator + "ChatEmojis" + File.separator + "emojis.yml";
-	public File chatEmojisFile;
-	public YamlConfiguration chatEmojiData;
+	public Emojis emojiManager;
 
 	public File dataFile;
 	public YamlConfiguration dataYaml;
@@ -47,26 +41,14 @@ public class Main extends JavaPlugin implements Listener {
 	public DiscordSRV api = DiscordSRV.getPlugin();
 	public Main main = this;
 
-	// Keep a reference to the registered PAPI expansion so we can re-register safely
 	private PAPI papiExpansion;
 
 	@Override
 	public void onEnable() {
-		// Load emoji data (safe if file exists; otherwise empty config)
-		chatEmojisFile = new File(directoryPathFile);
-		chatEmojiData = YamlConfiguration.loadConfiguration(chatEmojisFile);
-		Set<String> keys = chatEmojiData.getKeys(true);
+		emojiManager = new Emojis(this);
+		emojiManager.reload();
+		emojis = new ArrayList<>();
 
-		for (String str : keys) {
-			if (!str.endsWith(".gui-name")
-					&& !str.endsWith(".check")
-					&& !str.endsWith(".replacement")
-					&& !str.endsWith(".creator")) {
-				emojis.add(str.replace("emojis.", ""));
-			}
-		}
-
-		// Subscribe to DiscordSRV events after a short delay (lets DiscordSRV initialize)
 		Bukkit.getScheduler().runTaskLater(this, () -> {
 			try {
 				DiscordSRV.api.subscribe(new ChannelListener(main));
@@ -75,11 +57,10 @@ public class Main extends JavaPlugin implements Listener {
 			}
 		}, 30L);
 
-		// Register events and commands
 		PluginManager pm = Bukkit.getPluginManager();
 		pm.registerEvents(new ChatChannel(this), this);
 		pm.registerEvents(new Join(this), this);
-		pm.registerEvents(this, this); // for PluginEnableEvent listener below
+		pm.registerEvents(this, this);
 		config.setConfig(this);
 
 		if (getCommand("ch") != null) getCommand("ch").setExecutor(new Commands(this));
@@ -87,10 +68,8 @@ public class Main extends JavaPlugin implements Listener {
 		if (getCommand("chlist") != null) getCommand("chlist").setExecutor(new Commands(this));
 		if (getCommand("chspy") != null) getCommand("chspy").setExecutor(new Commands(this));
 
-		// Load channels from config
-		Set<String> configKeys = getConfig().getKeys(true);
 		channels = new ArrayList<>();
-		for (String key : configKeys) {
+		for (String key : getConfig().getKeys(true)) {
 			if (!key.endsWith("defaultGlobal")
 					&& !key.endsWith("defaultGlobalPermission")
 					&& key.startsWith("channels.name.")
@@ -113,6 +92,7 @@ public class Main extends JavaPlugin implements Listener {
 				channels.add(key.replace("channels.name.", ""));
 			}
 		}
+
 		enableGlobalChat = getConfig().getBoolean("channels.name.enableGlobalMessageFormat", false);
 		String defaultGlobal = getConfig().getString("channels.name.defaultGlobal");
 		if (defaultGlobal != null && !defaultGlobal.isEmpty()) {
@@ -122,18 +102,15 @@ public class Main extends JavaPlugin implements Listener {
 
 		hasPlaceholder = Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI");
 
-		// Remove non-existent channels
-		// This logic ensures we only keep channels with channelExists=true (except defaultGlobal).
 		for (int i = 0; i < channels.size(); i++) {
 			String ch = channels.get(i);
 			boolean exists = getConfig().getBoolean("channels.name." + ch + ".channelExists", false);
 			if (!exists && (defaultGlobal == null || !ch.equals(defaultGlobal))) {
 				channels.remove(i);
-				i--; // adjust index after removal
+				i--;
 			}
 		}
 
-		// Set default channel and spyChannels for online players
 		for (Player p : Bukkit.getOnlinePlayers()) {
 			if (defaultGlobal != null) {
 				currentChannel.put(p.getName(), defaultGlobal);
@@ -141,7 +118,6 @@ public class Main extends JavaPlugin implements Listener {
 			spyChannels.put(p.getName(), new ArrayList<>());
 		}
 
-		// Load or create data file
 		dataFile = new File(this.getDataFolder(), "data.yml");
 		if (!dataFile.exists()) {
 			try {
@@ -155,28 +131,20 @@ public class Main extends JavaPlugin implements Listener {
 		}
 		dataYaml = YamlConfiguration.loadConfiguration(dataFile);
 
-		// Robust PlaceholderAPI registration:
-		// 1) immediate attempt
 		tryRegisterPapi();
-		// 2) delayed retry for PlugMan load order shenanigans
 		Bukkit.getScheduler().runTaskLater(this, this::tryRegisterPapi, 20L);
 	}
 
 	@Override
 	public void onDisable() {
-		// Unregister PAPI expansion to avoid duplicates on PlugMan reloads
 		tryUnregisterPapi();
-
-		// Persist config
 		reloadConfig();
 		saveConfig();
 	}
 
-	// Listen for PlaceholderAPI getting enabled after us (PlugMan or normal late load)
 	@EventHandler
 	public void onPluginEnable(PluginEnableEvent event) {
 		if (event.getPlugin() != null && "PlaceholderAPI".equalsIgnoreCase(event.getPlugin().getName())) {
-			// Slight delay to ensure PAPI finished boot sequence
 			Bukkit.getScheduler().runTaskLater(this, this::tryRegisterPapi, 1L);
 		}
 	}
@@ -184,11 +152,11 @@ public class Main extends JavaPlugin implements Listener {
 	private void tryRegisterPapi() {
 		try {
 			if (Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
-				// Ensure PlaceholderAPI classes are available and expansion can be registered
 				if (papiExpansion != null) {
 					try {
 						papiExpansion.unregister();
-					} catch (Throwable ignored) {}
+					} catch (Throwable ignored) {
+					}
 					papiExpansion = null;
 				}
 				papiExpansion = new PAPI();
@@ -214,7 +182,6 @@ public class Main extends JavaPlugin implements Listener {
 				papiExpansion.unregister();
 				getLogger().info("PlaceholderAPI expansion unregistered.");
 			} catch (Throwable t) {
-				// Best-effort cleanup
 			} finally {
 				papiExpansion = null;
 			}

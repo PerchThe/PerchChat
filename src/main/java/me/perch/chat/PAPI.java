@@ -18,11 +18,9 @@ public class PAPI extends PlaceholderExpansion {
 			if (channel == null) {
 				return "None";
 			}
-			// If party, try to show party name
 			if (channel.equalsIgnoreCase("party")) {
 				return "Party";
 			}
-			// Capitalize first letter, rest lowercase
 			return channel.substring(0, 1).toUpperCase() + channel.substring(1).toLowerCase();
 		}
 		return null;
