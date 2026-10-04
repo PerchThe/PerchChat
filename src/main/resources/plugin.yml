@@ -1,13 +1,26 @@
-name: PerchChat
-version: 1.0.0
-description: The Perch's Chat System
+name: EvergreenChat
+version: 26.6.2
 author: KayaLambrex
-main: me.perch.chat.Main
-api-version: 1.17
+main: ever.green.Chat
+api-version: '1.20'
 depend: [DiscordSRV]
-softdepend: [PlaceholderAPI, GriefPrevention]
+softdepend: [PlaceholderAPI, GriefPrevention, PerchTags, mcMMO]
+
 commands:
-   ch:
-   chreload:
-   chlist:
-   chspy:
+  evergreenchat:
+    description: Core EvergreenChat command.
+    aliases: [ech, em]
+  messagechat:
+    description: Send a chat message.
+    permission: evergreen.chat.admin
+  messageactionbar:
+    description: Send an actionbar message.
+    permission: evergreen.chat.admin
+  messagebossbar:
+    description: Send a bossbar message.
+    permission: evergreen.chat.admin
+  dismiss:
+    description: Dismisses your active screen messages.
+  customadvancements.suppress:
+    description: Hides advancement notifications in chat
+    default: false

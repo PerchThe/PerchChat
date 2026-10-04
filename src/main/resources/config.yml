@@ -1,0 +1,152 @@
+# ==========================================
+# EVERGREEN CHAT CONFIGURATION
+# ==========================================
+
+disable_vanilla_sleep_messages: true
+
+chat_hover:
+  enabled: true
+  text:
+    - '&#ffff3aUsername &8| &7%player_name%'
+    - '&#ffff3aFirst Join &8| &7%plan_player_registered%'
+    - '&#ffff3aPronouns &8| &7%perchdescriptions_pronouns%'
+    - '&#ffff3aTimezone &8| &7%perchdescriptions_timezone%'
+    - '&#ffff3aRank &8| &7%luckperms_prefix_element_highest_on_track_ranks%'
+
+join_messages:
+  mode: "CUSTOM"
+  format:
+    - "&7Hi there, &#A5EF8C{username}&7"
+  first-join:
+    enabled: true
+    format:
+      - ""
+      - "&fWelcome &#48ab76{username} to &#7db597&lEvergreen&f, enjoy your stay!"
+      - ""
+  commands:
+    - "lp user <player> permission set special.glorp"
+    - "sudo <player> anycontainer on"
+  custom_messages:
+    founder:
+      - "<player>"
+
+quit_messages:
+  mode: "CUSTOM"
+  format:
+    - "&7See ya, &#EF8C8C{username}"
+
+death_messages:
+  mode: "CUSTOM"
+  prefix: ""
+  base-color: "white"
+
+advancements:
+  mode: "CUSTOM"
+  format: "&#48ab76{playernickname}&f has completed the advancement &#48ab76[%advancement%]"
+  lore-color: "&7"
+
+unknown_command:
+  enabled: true
+  format: "&cUnknown command. Type \"/help\" for help."
+
+say_command:
+  enabled: true
+  format: "&d[Server] &f<message>"
+
+me_command:
+  enabled: true
+  format: "* <player> <message>"
+
+# ==========================================
+# CHANNEL CONFIGURATION
+# ==========================================
+channels:
+  defaultGlobal: "Global"
+  channelUponJoining: "Global"
+  enableArgsAsMessage: true
+
+  party:
+    format: '&#FDB35C{party-name} &8| %luckperms_prefix%&f{playernickname} &#FDB35C{message}'
+    discordFormat: '({party-name}) {playernickname} {message}'
+    discordID: '1089540180945403966'
+    commands:
+      - 'p'
+      - 'pc'
+      - 'partychat'
+
+  list:
+    Global:
+      permission: "globalchat"
+      messageFormat: "%luckperms_prefix%&f{playernickname}%perchtags_tag_token%&f: {message}"
+      discordID: "1094672026079338517"
+      toDiscordFormat: "%luckperms_prefix%{playernickname} {message}"
+      fromDiscordFormat: "&#7289daDISCORD &8| &f{user}: &f{message}"
+      commands:
+        - 'g'
+        - 'gc'
+        - 'global'
+
+    testChannel:
+      permission: "ch.use.testChannel"
+      spyPermission: "ch.spy.testChannel"
+      prefix: "&8[&4testChannel&8]"
+      messageFormat: "{channel-prefix} {playernickname} &8--> &3{message}"
+      sendRegardlessOfCurrentChannel: true
+      enableDistanceMessage: false
+      distanceMessage: 25.0
+      discordID: ""
+      toDiscordFormat: "{channel-prefix} {playernickname} &8--> &3{message}"
+      fromDiscordFormat: "&cDiscord >> user &8--> &3{message}"
+      chlistDisplayAll: true
+      commands:
+        - 'tc'
+        - 'testchannel'
+
+    Staff:
+      permission: "staffchat"
+      spyPermission: "ch.spy"
+      prefix: "&#76D9A4STAFF &8|"
+      sendRegardlessOfCurrentChannel: true
+      enableDistanceMessage: false
+      distanceMessage: 250.0
+      messageFormat: "{channel-prefix} %luckperms_prefix%&f{playernickname} &#76D9A4{message}"
+      toDiscordFormat: "%luckperms_prefix%{playernickname}: {message}"
+      fromDiscordFormat: "&#76D9A4DISCORD &8| &f{user}: &#76D9A4{message}"
+      discordID: "1089539058084106290"
+      chlistDisplayAll: true
+      commands:
+        - 's'
+        - 'staffchat'
+
+    Local:
+      permission: "localchat"
+      spyPermission: "ch.spy"
+      prefix: "&#67FF61LOCAL &8|&7"
+      sendRegardlessOfCurrentChannel: true
+      enableDistanceMessage: true
+      distanceMessage: 250.0
+      messageFormat: "{channel-prefix} &f%luckperms_prefix%{playernickname} &#67FF61{message}"
+      fromDiscordFormat: "{message}"
+      toDiscordFormat: "{playernickname} {message}"
+      discordID: "1089539927500402778"
+      chlistDisplayAll: true
+      commands:
+        - 'l'
+        - 'lc'
+        - 'local'
+
+    nomic:
+      permission: "nomic"
+      spyPermission: "ch.spy"
+      prefix: "&#5AFF75VC &8|&7"
+      sendRegardlessOfCurrentChannel: false
+      enableDistanceMessage: true
+      distanceMessage: 250.0
+      messageFormat: "{channel-prefix} &f%luckperms_prefix%{playernickname} &#5AFF75{message}"
+      fromDiscordFormat: "{message}"
+      toDiscordFormat: "{playernickname} {message}"
+      discordID: "1089539927500402778"
+      chlistDisplayAll: true
+      commands:
+        - 'vc'
+        - 'nomic'

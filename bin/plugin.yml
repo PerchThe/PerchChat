@@ -1,8 +1,8 @@
-name: PerchChat
-version: 1
-description: Chat Plugin made for The Perch
-author: Korbsti
-main: me.perch.chat.Main
+name: EvergreenChat
+version: 1.0.0
+description: Evergreen's Chat System
+author: KayaLambrex
+main: ever.green.chat.Main
 api-version: 1.17
 depend: [DiscordSRV]
 softdepend: [PlaceholderAPI]
